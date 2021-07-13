@@ -1,0 +1,215 @@
+---
+title: "Checkpoint 2 report"
+author: "Jim Milks"
+date: "6/21/2021"
+output: html_document
+---
+
+```{r setup, message = FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidytext)
+library(tidyr)
+library(sentimentr)
+library(lexicon)
+library(stringr)
+library(stringi)
+library(dplyr)
+library(ggplot2)
+library(igraph)
+library(forcats)
+library(kableExtra)
+data("stop_words")
+data("profanity_alvarez")
+data("profanity_racist")
+profanity <- data.frame(word = profanity_alvarez)
+racist <- data.frame(word = profanity_racist)
+remove_words <- rbind(profanity, racist)
+setwd("~/Desktop/Data_science/predictive_text/")
+options(scipen = 1)
+```
+
+## Summary
+
+This report is milestone report for week 2 of the John Hopkins University/Coursera Data Science capstone project. The objective of this report is to understand the basic statistical properties of the data sets, to report major/interesting features, and get feedback on initial plans for the predictive model.
+
+The data comes from three sources of provided text data:
+
+1. blogs
+2. news
+3. Twitter
+
+I selected the English language text data out of the four possible languages and unified the data into a single corpus. The remainder of this report will focus on the properties of the English language data.
+
+```{r import data}
+con <- file("final/en_US/en_US.blogs.txt", open = "r")
+blogs <- readLines(con, encoding = "UTF-8", skipNul = TRUE)
+close(con)
+
+#news data
+con <- file("final/en_US/en_US.news.txt", open = "r")
+news <- readLines(con, encoding = "UTF-8", skipNul = TRUE)
+close(con)
+
+#twitter data
+con <- file("final/en_US/en_US.twitter.txt", open = "r")
+twit <- readLines(con, skipNul = TRUE, encoding = "UTF-8")
+close(con)
+rm(con)
+
+#Turn into tidy data
+blogs_df <- tibble(text = blogs)
+blogs_df$source <- rep("blog", length.out = length(blogs_df))
+blogs_df$source = as.factor(blogs_df$source)
+news_df <- tibble(text = news)
+news_df$source <- rep("news", length.out = length(news_df))
+news_df$source <- as.factor(news_df$source)
+twit_df <- tibble(text = twit)
+twit_df$source <- rep("twitter", length.out = length(twit_df))
+twit_df$source <- as.factor(twit_df$source)
+
+corpus <- rbind(blogs_df, news_df, twit_df)
+```
+
+## Summary Statistics
+```{r stats, echo=FALSE, warning=FALSE}
+number_of_lines <- sapply(list(blogs, news, twit), length)
+characters <- sapply(list(nchar(blogs), nchar(news), nchar(twit)), sum)
+number_words <- sapply(list(blogs, news, twit), stri_stats_latex)[4,]
+words_per_line <- lapply(list(blogs, news, twit), function(x) stri_count_words(x))
+words_per_line_summary <- sapply(list(blogs, news, twit), function(x) summary(stri_count_words(x))[c('Min.', 'Mean', 'Max.')])
+rownames(words_per_line_summary) <- c('Min', 'Mean', 'Max')
+stats.table <- data.frame(Source = c("Blogs", "News", "Twitter"), Characters = characters, Words = number_words, Lines = number_of_lines, t(rbind(round(words_per_line_summary))))
+kable(stats.table, row.names = FALSE)
+```
+
+The data sets for this project are quite large. The Blog data set consists of  `r sum(nchar(blogs))` characters in `r stri_stats_latex(blogs)[4]` words and `r length(blogs)` lines. The News data set has `r sum(nchar(news))` characters in `r stri_stats_latex(news)[4]` words and `r length(news)` lines. The smallest of the three data sets, from Twitter, has "only" `r sum(nchar(twit))` characters, `r stri_stats_latex(twit)[4]` words, and `r length(twit)` lines. The words per line varies widely between the data sets, from a minimum of `r summary(stri_count_words(blogs))[1]` to a maximum of `r summary(stri_count_words(blogs))[6]` for Blogs whereas the Twitter data set only has a maximum of `r summary(stri_count_words(twit))[6]` words per line. Not surprisingly, the mean words per line also varies widely, from the Blog data set mean of `r round(mean(stri_count_words(blogs)))` down to the Twitter data set mean of `r round(mean(stri_count_words(twit)))`.
+
+```{r, cleanup, warning = FALSE, message = FALSE, results = 'hide'}
+rm(words_per_line)
+rm(number_of_lines)
+rm(number_words)
+rm(characters)
+rm(blogs)
+rm(news)
+rm(twit)
+rm(twit_df)
+rm(blogs_df)
+rm(news_df)
+invisible(gc(verbose = FALSE, reset = TRUE))
+```
+```{r, tokenization, warning = FALSE, message = FALSE}
+corpus_words <- corpus %>%
+        unnest_tokens(word, text) %>%
+        filter(!grepl('[0-9]', word)) %>%
+        anti_join(stop_words) %>%
+        anti_join(remove_words) %>%
+        count(source, word, sort = TRUE)
+
+corpus_words %>%
+        group_by(source) %>%
+        filter(n > 27500) %>%
+        arrange(desc(n)) %>%
+        ggplot(aes(n, word, fill = source)) +
+        geom_col(show.legend = FALSE) +
+        facet_wrap(~source, ncol = 2, scales = "free_y")
+```
+
+I then removed numbers, profanity, and racist words using data sets from the lexicon package. Tokenizing the remaining data sets shows that the most common words in Blogs data set were time, people, and day, in the News data set time, people, and city, and in the Twitter data love, day, and time.
+
+```{r, TF-IDF, warning=FALSE, message=FALSE}
+corpus_total <- corpus_words %>%
+        group_by(source) %>%
+        summarize(total = sum(n))
+
+corpus_words <- left_join(corpus_words, corpus_total)
+
+source_tf_idf <- corpus_words %>%
+        bind_tf_idf(word, source, n) %>%
+        select(-total) %>%
+        arrange(desc(tf_idf))
+
+source_tf_idf %>%
+        group_by(source) %>%
+        slice_max(tf_idf, n = 15) %>%
+        ungroup() %>%
+        ggplot(aes(tf_idf, fct_reorder(word, tf_idf), fill = source)) +
+        geom_col(show.legend = FALSE) +
+        facet_wrap(~source, ncol = 2, scales = "free") +
+        labs(x = "tf-idf", y = NULL)
+rm(source_tf_idf)
+invisible(gc(verbose = FALSE, reset = TRUE))
+```
+
+I then conducted a tf-idf analysis to determine the most important words in each data set. The three sources varied widely in most important words, with little in common. The three most important words in the Blogs data were stampin, copics, and bersih. In the News data, they were øthe, dimora, and metrohealth and in the Twitter data, tryna, idk, and oomf.
+
+## N-grams
+
+The heart of my predictive model will be bigrams and trigrams. Accordingly, I constructed bi- and trigrams to examine the relationships between words in the body of my data using Markov chains. As always, I first removed all numbers, profanity, and racist terms from my data. I then selected a random sample containing 10% of the total data to speed up the analysis.
+
+```{r, bigrams, cache = TRUE}
+set.seed(5621)
+bigrams <- corpus %>%
+        unnest_tokens(bigram, text, token = "ngrams", n = 2)
+bigrams_sample <- bigrams[sample(nrow(bigrams), size = round(nrow(bigrams)/10), replace = FALSE), ] %>%
+        separate(bigram, c("word1", "word2"), sep = " ") %>%
+        filter(!grepl('[0-9]', word1),
+               !grepl('[0-9]', word2)) %>%
+        filter(!word1 %in% stop_words$word,
+               !word2 %in% stop_words$word) %>%
+        filter(!word1 %in% remove_words$word,
+               !word2 %in% remove_words$word) %>%
+        count(word1, word2, sort = TRUE)
+rm(bigrams)
+invisible(gc(verbose = FALSE, reset = TRUE))
+
+trigrams <- corpus %>%
+        unnest_tokens(trigram, text, token = "ngrams", n = 3)
+trigrams_sample <- trigrams[sample(nrow(trigrams), size = round(nrow(trigrams)/10), replace = FALSE), ] %>%
+        separate(trigram, c("word1", "word2", "word3"), sep = " ") %>%
+        filter(!grepl('[0-9]', word1),
+               !grepl('[0-9]', word2),
+               !grepl('[0-9]', word3)) %>%
+        filter(!word1 %in% stop_words$word,
+               !word2 %in% stop_words$word,
+               !word3 %in% stop_words$word) %>%
+        filter(!word1 %in% remove_words$word,
+               !word2 %in% remove_words$word,
+               !word3 %in% remove_words$word) %>%
+        count(word1, word2, word3, sort = TRUE)
+rm(trigrams)
+invisible(gc(verbose = FALSE, reset = TRUE))
+```
+
+
+```{r, bigram relationships, warning = FALSE}
+bigram_graph <- bigrams_sample %>%
+        filter(n > 150) %>%
+        graph_from_data_frame()
+library(ggraph)
+set.seed(2021)
+ggraph(bigram_graph, layout = "fr") +
+        geom_edge_link() +
+        geom_node_point() +
+        geom_node_text(aes(label = name), vjust = 1, hjust = 1)
+```
+
+We can now visualize some of the structure within the text. For instance, the word "las" is closely related to "vegas". The word "san" is related to three other words, all city names: "diego", "jose", and "francisco." The word "happy" is related to several other words, including "hour", "birthday", "easter", "mother's", and "friday". Repeating the same visualization with trigrams reveals the following relationships:
+
+```{r, trigrams graph, warning = FALSE}
+trigram_graph <- trigrams_sample %>%
+        filter(n > 20) %>%
+        graph_from_data_frame()
+set.seed(2021)
+ggraph(trigram_graph, layout = "fr") +
+        geom_edge_link() +
+        geom_node_point() +
+        geom_node_text(aes(label = name), vjust = 1, hjust = 1)
+```
+
+We see that "happy" is still associated with "mother's" but now we also see "valentine's", "hump" and "cinco". "major" is paired with "league" whereas "martin", "luther", and "king" run together.
+
+## Future plans
+
+The final form of this project will be a Shiny app with a user interface wherein the user may supply a word or phrase and then have the next word predicted, with up to three options given. The predictive model will be based on the Markov chains visualized in the last two graphs. The biggest issue will be computational space. To be useful, the Markov chain should be based on as much of the underlying data as possible. I've already run into memory issues while developing this report as I initially attempted to use the full corpus and had to cut my sample down. Computational limits will be even more severe for a web-based app.
+
+The strategy I am inclined to use will be to use trigrams or even larger n-grams as the basis of my model. As the size of the n-gram increased, the number of such n-grams decreased, making it much easier to search and visualize the data while also taking up less memory. Trigrams also did not appear to sacrifice much accuracy.
