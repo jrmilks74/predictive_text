@@ -20,14 +20,16 @@ shinyUI(fluidPage(
         mainPanel(
             h3("Predictions"),
             br(),
-            verbatimTextOutput("pred"),
-            br(),
-            br(),
-            h4("Author: James R. Milks"),
-            h5("Updated: July 14, 2021"),
-            br(),
-            helpText("Submitted in fulfillment of the requirements of the Capstone Course",
-                     "in the Data Science Specialization from John Hopkins University")
+            verbatimTextOutput("pred")
+                        
         )
-    )
-))
+    ),
+    h4("Author: James R. Milks"),
+    h5("Updated: 05 July 2022"),
+    "Originally submitted in fulfillment of the requirements of the Capstone Course in the Data Science Specialization from John Hopkins University",
+    br(),
+    "Code and algorithm available at",
+    a(href = "https://github.com/jrmilks74/predictive_text", "https://github.com/jrmilks74/predictive_text")
+    
+)
+)
