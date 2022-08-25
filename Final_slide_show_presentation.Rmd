@@ -1,0 +1,66 @@
+---
+title: "Text Prediction App"
+author: "James R. Milks"
+date: "7/14/2021"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## John Hopkins University Data Science Capstone Course Project
+
+James R. Milks
+July 14, 2021
+
+## Introduction
+
+The aim of this project was to take a large sample of text from three sources (blogs, news, and Twitter), analyze it, and build a predictive text application that will predict the next word in a sentance, similar to most smartphone and tablet keyboards.
+
+The main problem was that I (and I suspect most students of this course) have never dealt with words and sentences as the raw data. The challenge, then, was to take unfamiliar data, learn how to analyze it with as few hints as possible, and then build a model to predict it.
+
+## Obtaining and cleaning the data
+
+- We were provided with a large (>4,000,000 lines) sample of text drawn from blogs, news stories, and public tweets from Twitter.
+- Data was cleaned by removing whitespace, punctuation marks, numbers, profanity/racist language, and numbers, and then converting to lowercase. I also stemmed the data, reducing it to its root forms to deal with words with varying forms.
+- I used the packages tidytext and corpus to create N-grams, from unigrams to quadgrams, and analyze the frequency of individual words and the various combinations of words
+- I used the igraph package to look at the physical structure of the data, visually displaying the relationships between various bigrams and trigrams.
+
+## Predictive model
+
+My first attempt was with Markov chain models but I abandoned it due to several issues
+* Markov transition matrices took hours to calculate and resulted in enormous files (10+ Gb)
+* Needed separate models for each N-Gram which had to be linked together for a functional app
+* Could only use 0.01% of the overall data due to memory size
+* Predictive ability was generally poor (~1%)
+
+## Predictive model
+
+My second attempt used Stupid Back-Off N-Gram models <https://vgherard.github.io/sbo/index.html>
+* Able to use the full data set with no memory issues
+* Quick calculations relative to Markov chain models (minutes rather than hours)
+* Automatically calculated N-Grams lower than the specified N-gram
+* Improved predictive ability (Quadgram model gave correct predictions 32.6% ± 0.6% of the time when evaluated on a test data set)
+* Easy to export to Shiny App for data product development
+
+## Predictive model
+
+- The data given was exclusively from Twitter, blogs, and news stories
+- I supplemented with books from Project Gutenberg <https://www.gutenberg.org> via the gutenbergr package
+- Chose books written by Jane Austen, the Brontë sisters, H.G. Wells, Charles Dickens, Charles Darwin, and Sir Arthur Conan Doyle, along with a literature textbook. Total training corpus for the model was 5,009,125 lines of text.
+- Fitted the model using up to 4-Grams as 5-Grams and above models did not improve the predictive power while nearly tripling the computing time required.
+
+## App
+
+<https://jrmilks.shinyapps.io/Text_prediction/>
+
+![Predictive text app.](Text_prediction/text_app.jpg)
+
+## App
+
+- Shows the top three predictions of the next word as you type
+- Can handle everything from one word to nearly complete sentences
+
+## Acknowledgements and future plans
+
